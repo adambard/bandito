@@ -12,6 +12,15 @@ Bandito will take care of the following for you:
 
 *Bandito requires that you use ring's **session middleware**.*
 
+## Installation
+
+Bandito is available from clojars, so you just need to put the following in
+your project `:dependencies`
+
+```
+[bandito "1.0.0"]
+```
+
 ## Usage
 
 The current version is *1.0.0*

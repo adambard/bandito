@@ -8,7 +8,7 @@
 
 ; Counters
 
-(defn inc-in-report [test-key option-key counter-key]
+(defn- inc-in-report [test-key option-key counter-key]
   (assert (keyword? test-key))
   (assert (keyword? option-key))
   (assert (keyword? counter-key))
@@ -17,10 +17,10 @@
           v (inc (or v 0))]
       (assoc-in report [test-key option-key counter-key] v))))
 
-(defn inc-conversions! [test-key option-key]
+(defn- inc-conversions! [test-key option-key]
   (swap! report (inc-in-report test-key option-key :conversions)))
 
-(defn inc-views! [test-key option-key]
+(defn- inc-views! [test-key option-key]
   (swap! report (inc-in-report test-key option-key :views)))
 
 ; Pickers
@@ -84,10 +84,14 @@
     (if (not (nil? choice-shown))
       (inc-conversions! k choice-shown))))
 
-(defn persist! [f]
+(defn persist!
+  "Accept a function that will persist the conversion report"
+  [f]
   (f @report))
 
-(defn load! [data]
+(defn load!
+  "Load the given conversion report."
+  [data]
   (reset! report data))
 
 (defn as-map
