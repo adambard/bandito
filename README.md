@@ -18,12 +18,12 @@ Bandito is available from clojars, so you just need to put the following in
 your project `:dependencies`
 
 ```
-[bandito "1.0.0"]
+[bandito "1.1.0"]
 ```
 
 ## Usage
 
-The current version is *1.0.0*
+The current version is *1.1.0*
 
 To start doing tests, you need to make different variants. Bandito
 assumes that your variants can be expressed as different view functions.
@@ -40,9 +40,12 @@ Here's some test views we'll use for examples.
 
 ### Running experiments
 
-Use `runtest!` to mash together your variants into a single view function
-that can be used as normal. `runtest!` takes a (unique) keyword identifying
-the experiment, and a hash-map of view functions identified by keywords:
+Use `init-experiment` to create an experiment -- that is, a container
+for your results. You can define this in your top level or give it a lifecycle
+with component or mount, whatever you like. `init-experiment` an optional configuration
+map, and a hash-map of view functions identified by keywords. Use
+`experiment-handler` to create a ring handler from the experiment that will
+track views and conversions.
 
 ```clojure
 (require '[bandito.core :as bandito])
@@ -54,19 +57,26 @@ the experiment, and a hash-map of view functions identified by keywords:
    :view2 view2
    :view3 view3})
 
-(def experiment-view (bandito/runtest! :banditotest viewmap))
+(def experiment (bandito/init-experiment viewmap))
+(def experiment-view (bandito/experiment-handler experiment))
 ```
 
 You can use `experiment-view` here as you would normally use `view1`, `view2`, or `view3`
 
+An `experiment` is a clojure record with 4 properties:
+
+* `:report`, an atom containing a map representing the results of your experiment,
+* `:config`, a hash-map containing configuration options
+* `:view-map`, the view map described above
+
 ### Logging conversions
 
 In the view representing your conversion, include a call to `convert!` with the experiment
-keyword and the request map (from which bandito will pull the view that was shown):
+and the request map (from which bandito will pull the view that was shown):
 
 ```clojure
 (defn conversion-view [req]
-  (bandito/convert! :banditotest req)
+  (bandito/convert! experiment req)
   ; ... the rest of your view
 )
 ```
@@ -77,23 +87,25 @@ Bandito doesn't know or care how you store the results. You can grab the current
 results report at any time using `as-map`:
 
 ```clojure
-(bandito/as-map)
+(bandito/as-map experiment)
 
 ;; How your test might look after running for a bit
 
-; {:banditotest
 ;   {:view1 {:views 2 :conversions 0}
 ;    :view2 {:views 7 :conversions 1}
-;    :view3 {:views 17 :conversions 3}}}
+;    :view3 {:views 17 :conversions 3}}
 ```
 
-You can also give a function that will accept the above map to `persist!`, with
-the expectation that said function will write the data somewhere. The inverse of
-`persist!` is `load!`, which will initialize bandito with the provided data,
-which must be in the format as returned by `as-map`
+To load persisted results, just update the `:report` atom within the experiment
+with a map of a form similar to the above:
+
+```clojure
+(reset! (:report experiment) my-report-map)
+```
+
 
 ## License
 
-Copyright © 2013 Adam Bard (adambard.com)
+Copyright © 2013-2016 Adam Bard (adambard.com)
 
 Distributed under the Eclipse Public License, the same as Clojure.

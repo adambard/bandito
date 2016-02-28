@@ -1,4 +1,4 @@
-(defproject bandito "1.0.1"
+(defproject bandito "1.1.0"
   :description "Easy episilon-greedy multi-armed banditry for clojure"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"

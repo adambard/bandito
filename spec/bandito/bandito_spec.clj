@@ -7,69 +7,63 @@
 (defn view3 [req] "View #3")
 (def viewmap {:view1 view1 :view2 view2 :view3 view3})
 
-(defn reset-report [views conversions]
+(defn reset-report [experiment views conversions]
   (reset!
-    bandito/report
-    {:banditotest
+    (:report experiment)
+    
      {:view1 {:views (nth views 0)
               :conversions (nth conversions 0)}
       :view2 {:views (nth views 1)
               :conversions (nth conversions 1)}
       :view3 {:views (nth views 2)
-              :conversions (nth conversions 2)}}}))
+              :conversions (nth conversions 2)}}))
 
-(defn mock-req [choice]
-  {:session {:bandito-state {:banditotest choice}}})
+(defn mock-req [{k :k :as experiment} choice]
+  {:session {:bandito-state {k choice}}})
 
 (describe "Bandito multi-armed bandit testing"
 
-  (before
-    (reset! bandito/config {:epsilon 0}); We're not testing rand-nth here
-    (reset! bandito/report {}))
-
   (it "Saves the choice in the session and uses it if provided"
-    (let [req (mock-req :view1)]
+    (let [experiment (bandito/init-experiment {:epsilon 0} viewmap)
+          req (mock-req experiment :view1)]
       ; 10 times
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      ((bandito/runtest! :banditotest viewmap) req)
-      (should= 10 (-> @bandito/report :banditotest :view1 :views))
-      (should= :view1 (-> ((bandito/runtest! :banditotest viewmap) req) :session :bandito-state :banditotest))
-      ))
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      ((bandito/experiment-handler experiment) req)
+      (should= 10 (-> experiment :report (deref) :view1 :views))
+      (should= :view1 (-> ((bandito/experiment-handler experiment) req)
+                          :session :bandito-state (get (:k experiment))))))
+
 
   (it "Does not register a conversion if no session or data are present"
-      (reset! bandito/report {})
-      (bandito/convert! :banditotest {})
-      (bandito/convert! :banditotest {:session {:bandito-state {:badkey :view1}}})
-      (should= @bandito/report {})
-      (reset! bandito/report {:banditotest {:view1 {:views 1}}})
-      (bandito/convert! :banditotest {:session {:bandito-state {:banditotest :view1}}})
-      (should= @bandito/report {:banditotest {:view1 {:views 1 :conversions 1}}})
+    (let [experiment (bandito/init-experiment {:epsilon 0} viewmap)]
+      (bandito/convert! experiment {})
+      (bandito/convert! experiment {:session {:bandito-state {:badkey :view1}}})
+      (should= @(:report experiment) {})
+      (reset! (:report experiment) {:view1 {:views 1}})
+      (bandito/convert! experiment {:session {:bandito-state {(:k experiment) :view1}}})
+      (should= @(:report experiment) {:view1 {:views 1 :conversions 1}} ))
       )
 
   (it "Chooses the best choice"
-    (reset-report [1 1 1000] [0 0 1])
-    (dotimes [n 100]
-      (should= "View #3"(:body ((bandito/runtest! :banditotest viewmap) {})))))
+    (let [experiment (bandito/init-experiment {:epsilon 0} viewmap)]
+      (reset-report experiment [1 1 1000] [0 0 1])
+      (dotimes [n 100]
+        (should= "View #3"(:body ((bandito/experiment-handler experiment) {}))))))
 
   (it "Records a conversion"
-      (reset-report [1 1 1] [0 0 0])
-      (should= 0 (-> @bandito/report :banditotest :view2 :conversions))
-      (bandito/convert! :banditotest (mock-req :view2))
-      (should= 1 (-> @bandito/report :banditotest :view2 :conversions)))
-
-  (it "Can be persisted"
-      (reset-report [1 2 3] [0 1 0])
-      (let [store (atom {})]
-        (bandito/persist! (partial reset! store))
-        (should= @store @bandito/report)))
+    (let [experiment (bandito/init-experiment {:epsilon 0} viewmap)]
+      (reset-report experiment [1 1 1] [0 0 0])
+      (should= 0 (-> @(:report experiment) :view2 :conversions))
+      (bandito/convert! experiment (mock-req experiment :view2))
+      (should= 1 (-> @(:report experiment) :view2 :conversions))))
 )
 
 

@@ -1,27 +1,38 @@
 (ns bandito.core)
 
-; Ephemeral result store
-(def report (atom {}))
+(defn generate-random-key []
+  (keyword (str (java.util.UUID/randomUUID))))
 
 ; Configuration map
-(def config (atom {:epsilon 0.1}))
+(def default-config {:epsilon 0.1})
+
+(defprotocol BanditoReport
+  (as-map [this]))
+
+(defrecord Experiment [k report config view-map]
+  BanditoReport
+  (as-map [this]
+    (deref (:report this))))
+
 
 ; Counters
 
-(defn- inc-in-report [test-key option-key counter-key]
-  (assert (keyword? test-key))
+(defn- inc-in-report [option-key counter-key]
   (assert (keyword? option-key))
   (assert (keyword? counter-key))
   (fn [report]
-    (let [v (-> report test-key option-key counter-key)
+    (let [v (-> report option-key counter-key)
           v (inc (or v 0))]
-      (assoc-in report [test-key option-key counter-key] v))))
+      (assoc-in report [option-key counter-key] v))))
 
-(defn- inc-conversions! [test-key option-key]
-  (swap! report (inc-in-report test-key option-key :conversions)))
+(defn- inc-conversions! [{report :report :as experiment}
+                         option-key]
+  (swap! report (inc-in-report option-key :conversions)))
 
-(defn- inc-views! [test-key option-key]
-  (swap! report (inc-in-report test-key option-key :views)))
+(defn- inc-views! [{report :report :as experiment}
+                   option-key]
+  (swap! report (inc-in-report option-key :views)))
+
 
 ; Pickers
 
@@ -37,29 +48,37 @@
 
 (defn- pick-random-view
   "Return a random key from viewmap"
-  [k viewmap]
+  [viewmap]
   (rand-nth (keys viewmap)))
 
 (defn- pick-best-view
   "Return the key in viewmap that has the best conversion ratio"
-  [k viewmap]
-  (let [ratios (map calc-ratio (-> @report :banditotest))]
+  [{report :report  :as experiment} viewmap]
+  (let [ratios (map calc-ratio @report)]
     (if (< (count ratios) (count viewmap)) ; Give everyone a chance
-      (pick-random-view k viewmap)
+      (pick-random-view viewmap)
       (first (reduce best-contender ratios)))))
 
 (defn pick-view
-  [k viewmap]
-  (if (< (rand) (get @config :epsilon))
-    (pick-random-view k viewmap)
-    (pick-best-view k viewmap)))
+  [{config :config :as experiment} viewmap]
+  (if (< (rand) (get config :epsilon))
+    (pick-random-view viewmap)
+    (pick-best-view experiment viewmap)))
 
 ; Exposed api
 
-(defn runtest!
+(defn init-experiment
+  ([viewmap] (init-experiment {} viewmap))
+  ([config viewmap] (->Experiment
+                        (generate-random-key)
+                        (atom {})
+                        (merge default-config config)
+                        viewmap)))
+
+(defn experiment-handler
   "Define a test to be run. Accepts a keyword uniquely identifying the test,
   and a hash-map of views identified by unique keywords."
-  [k viewmap]
+  [{k :k viewmap :view-map :as experiment}]
 
   (assert (keyword? k))
   (assert (map? viewmap))
@@ -67,9 +86,9 @@
   ; Return a modified view function
   (fn [req]
     (let [viewkey (or (-> req :session :bandito-state k)
-                      (pick-view k viewmap))
-          resp ((viewmap viewkey) req)]
-      (inc-views! k viewkey)
+                      (pick-view experiment viewmap))
+          resp ((get viewmap viewkey) req)]
+      (inc-views! experiment viewkey)
       (if (string? resp)
         {:status 200
          :body resp
@@ -78,23 +97,7 @@
 
 (defn convert!
   "Record a conversion"
-  [k req]
-  (assert (keyword? k))
+  [{k :k :as experiment} req]
   (let [choice-shown (-> req :session :bandito-state k)]
     (if (not (nil? choice-shown))
-      (inc-conversions! k choice-shown))))
-
-(defn persist!
-  "Accept a function that will persist the conversion report"
-  [f]
-  (f @report))
-
-(defn load!
-  "Load the given conversion report."
-  [data]
-  (reset! report data))
-
-(defn as-map
-  "Output the report (or one test) as a clojure map"
-  ([] @report)
-  ([k] (get @report k)))
+      (inc-conversions! experiment choice-shown))))
